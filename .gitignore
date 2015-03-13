@@ -1,0 +1,6 @@
+.libs
+rock_tmp
+.sam-cache
+.DS_Store
+*.dSYM
+

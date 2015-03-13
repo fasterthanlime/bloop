@@ -1,0 +1,6 @@
+Name: bloop
+Version: 0.1
+Description: A music library
+Requires: openal, vorbis, deadlogger
+SourcePath: source
+
