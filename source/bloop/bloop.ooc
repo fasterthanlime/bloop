@@ -235,7 +235,7 @@ Sample: class {
     // internal state
     fstream: FStream
     endian: Int
-    oggFile: _OggFile
+    oggFile: _OggFile*
     pInfo: VorbisInfo*
     buffer: Char*
     hasNext := true
@@ -267,16 +267,17 @@ Sample: class {
         // Open for binary reading
         fstream = fopen(path, "rb")
         if (!fstream) {
-            Exception new("Cannot open %s for reading..." format(path)) throw()
+            raise("Cannot open #{path} for reading...")
         }
 
         // Try opening the given file
-        if (ov_open(fstream, oggFile&, null, 0) != 0) {
-            Exception new("Error opening %s for decoding..." format(path)) throw()
+        oggFile = gc_malloc(_OggFile size)
+        if (ov_open(fstream, oggFile, null, 0) != 0) {
+            raise("Cannot open #{path} for decoding...")
         }
 
         // Get some information about the OGG file
-        pInfo = ov_info(oggFile&, -1)
+        pInfo = ov_info(oggFile, -1)
 
         // Check the number of channels... always use 16-bit samples
         format = (pInfo@ channels == 1) ?
@@ -290,7 +291,7 @@ Sample: class {
         buffer = gc_malloc(TINY_BUFFER_SIZE)
 
         // also get the duration while we're at it
-        duration = ov_time_total(oggFile&, -1)
+        duration = ov_time_total(oggFile, -1)
     }
 
     refill: func (processed, required: Int, unqueue: Func (ALuint), queue: Func (ALuint)) {
@@ -320,7 +321,7 @@ Sample: class {
         }
 
         bitStream: Int = 0
-        bytes := ov_read(oggFile&, buffer, TINY_BUFFER_SIZE, endian, 2, 1, bitStream&)
+        bytes := ov_read(oggFile, buffer, TINY_BUFFER_SIZE, endian, 2, 1, bitStream&)
 
         match {
             case bytes > 0 =>
@@ -345,7 +346,7 @@ Sample: class {
     }
 
     seek: func (time: Double) {
-        if(ov_time_seek(oggFile&, time)) {
+        if(ov_time_seek(oggFile, time)) {
             raise("Could not seek inside #{path}")
         }
         hasNext = true
@@ -358,7 +359,7 @@ Sample: class {
     close: func {
         // Clean up!
         gc_free(buffer)
-        ov_clear(oggFile&)
+        ov_clear(oggFile)
     }
 
     // free: func {

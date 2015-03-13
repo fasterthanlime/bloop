@@ -70,7 +70,14 @@ main: func -> Int {
     }
 
     logger warn("seeking backwards")
-    source seek(3.5)
+    source seek(1.5)
+    source play()
+    while (source currentTime < 5) {
+        doUpdate()
+    }
+
+    logger warn("seeking forward")
+    source seek(7.5)
     source play()
     while (source playing) {
         doUpdate()
