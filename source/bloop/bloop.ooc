@@ -14,9 +14,11 @@ Source: class {
     autofree: Bool
     loop := false
     playing := false
+    paused := false
     currentTime: Double = 0
 
     BURST := static 64
+    LOW := static 4
 
     sourceID: ALuint // OpenAL sound source ID
 
@@ -26,11 +28,21 @@ Source: class {
         alSourcei(sourceID, AL_REFERENCE_DISTANCE, 1.0)
         alSourcei(sourceID, AL_MAX_DISTANCE, 1000.0)
 
-        if (sample streaming) {
-            refill(0)
-        } else {
+        if (!sample streaming) {
             log("Queuing #{sample bufferIDs size} buffers")
             queueAll(sample bufferIDs)
+        }
+    }
+
+    gain: Float {
+        set (gain) {
+            alSourcef(sourceID, AL_GAIN, gain)
+        }
+
+        get {
+            gain: Float
+            alGetSourcef(sourceID, AL_GAIN, gain&)
+            gain
         }
     }
 
@@ -51,10 +63,16 @@ Source: class {
 
         currentTime += durationInSeconds
         alSourceUnqueueBuffers(sourceID, 1, bufferID&)
+        if (err := alGetError()) {
+            raise("Error while unqueuing buffer #{bufferID}: #{alGetString(err)}")
+        }
     }
 
     queue: func (bufferID: ALuint) {
         alSourceQueueBuffers(sourceID, 1, bufferID&)
+        if (err := alGetError()) {
+            raise("Error while queuing buffer: #{alGetString(err)}")
+        }
     }
 
     queueAll: func (bufferIDs: ArrayList<ALuint>) {
@@ -75,6 +93,8 @@ Source: class {
     }
 
     update: func {
+        if (paused || !playing) { return }
+
         if (sample streaming) {
             processed: Int
             alGetSourcei(sourceID, AL_BUFFERS_PROCESSED, processed&)
@@ -85,14 +105,16 @@ Source: class {
 
                 if (processed == queued) {
                     playing = false
+                    paused = false
                     alSourceStop(sourceID)
                     log("finished playing #{sample path}")
                 } else {
-                    refill(processed)
+                    if (processed > Source LOW) {
+                        refill(processed)
+                    }
                 }
             } else {
-                if (processed > 16) {
-                    log("#{processed} buffers processed for #{sample path}, refilling")
+                if (processed > Source LOW) {
                     refill(processed)
                 }
             }
@@ -100,10 +122,15 @@ Source: class {
 
         if(getState() == SourceState STOPPED) {
             playing = false
+            refill(0, 0)
+
             if(autofree) {
                 log("Freeing because stopped")
                 boombox freeSource(this)
-            } else if (loop) {
+                return
+            }
+            
+            if (loop) {
                 log("Looping")
                 play()
             }
@@ -114,8 +141,12 @@ Source: class {
         Boombox logger debug("[#{sourceID}] #{msg}")
     }
 
-    refill: func (processed: Int) {
-        sample refill(processed, BURST, |bufferID|
+    refill: func (processed: Int, queueing := -1) {
+        if (queueing == -1) {
+            queueing = BURST - processed
+        }
+        log("Processed #{processed}, queueing #{queueing}")
+        sample refill(processed, queueing, |bufferID|
             unqueue(bufferID)
             , |bufferID|
             queue(bufferID)
@@ -123,14 +154,68 @@ Source: class {
     }
 
     play: func {
-        log("[Source %d] playing" format(sourceID))
+        if (playing) {
+            return
+        }
+
+        if (paused) {
+            paused = false
+            log("[Source %d] resuming" format(sourceID))
+        } else {
+            seek(0)
+            log("[Source %d] playing" format(sourceID))
+        }
+
         playing = true
+
         alSourcePlay(sourceID)
+    }
+
+    pause: func () {
+        if (paused || !playing) { return }
+
+        log("[Source %d] pausing" format(sourceID))
+        paused = true
+        playing = false
+        alSourcePause(sourceID)
     }
 
     free: func {
         alSourceStop(sourceID)
         alDeleteSources(1, sourceID&)
+    }
+
+    seek: func (time: Double) {
+        log("Seeking to #{time}")
+        alSourceStop(sourceID)
+
+        queued: Int
+        alGetSourcei(sourceID, AL_BUFFERS_QUEUED, queued&)
+        sample refill(queued, 0, |bufferID| unqueue(bufferID), |bufferID|)
+
+        processed: Int
+        alGetSourcei(sourceID, AL_BUFFERS_PROCESSED, processed&)
+        if (processed > 0) {
+            raise("After seek, should have 0 processed buffers")
+        }
+        alGetSourcei(sourceID, AL_BUFFERS_QUEUED, queued&)
+        if (processed > 0) {
+            raise("After seek, should have 0 queued buffers")
+        }
+
+        sample seek(time)
+
+        currentTime = time
+
+        refill(0)
+        alGetSourcei(sourceID, AL_BUFFERS_QUEUED, queued&)
+
+        if (playing || paused) {
+            alSourcePlay(sourceID)
+            if (paused) {
+                alSourcePause(sourceID)
+            }
+        }
     }
 
 }
@@ -214,43 +299,60 @@ Sample: class {
             bufferID := bufferIDs removeAt(0)
             unqueue(bufferID)
             alDeleteBuffers(1, bufferID&)
+            if (err := alGetError()) {
+                raise("Error while deleting buffer: #{alGetString(err)}")
+            }
         }
 
-        for (i in 0..required) {
-            bufferID := decodeFrame()
-            if (bufferID == -1) {
-                break
+        if (hasNext) {
+            for (i in 0..required) {
+                bufferID := decodeFrame()
+                if (bufferID != -1) {
+                    queue(bufferID)
+                }
             }
-            queue(bufferID)
         }
     }
 
     decodeFrame: func -> ALuint {
-        bufferID: ALuint = -1
+        if (!hasNext) {
+            return -1
+        }
 
-        bitStream: Int
+        bitStream: Int = 0
         bytes := ov_read(oggFile&, buffer, TINY_BUFFER_SIZE, endian, 2, 1, bitStream&)
 
         match {
             case bytes > 0 =>
                 // create a new buffer
+                bufferID: ALuint = -1
                 alGenBuffers(1, bufferID&)
-                bufferIDs add(bufferID)
                 alBufferData(bufferID, format, buffer, bytes, freq)
+                bufferIDs add(bufferID)
+                bufferID
             case bytes < 0 =>
                 // something wrong happened
                 close()
                 hasNext = false
-                Exception new("Error decoding %s..." format(path)) throw()
+                raise("Error decoding #{path}...")
+                -1
             case =>
                 // end of file!
                 hasNext = false
-                alDeleteBuffers(1, bufferID&)
-                bufferID = -1
+                -1
         }
 
-        //"Got %d bytes, buffer %d size = %d for %s" printfln(bytes, bufferID, TINY_BUFFER_SIZE, path)
-        bufferID
+    }
+
+    seek: func (time: Double) {
+        if(ov_time_seek(oggFile&, time)) {
+            raise("Could not seek inside #{path}")
+        }
+        hasNext = true
+        while (!bufferIDs empty?()) {
+            bufferID := bufferIDs removeAt(0)
+            alDeleteBuffers(1, bufferID&)
+        }
     }
 
     close: func {
@@ -259,9 +361,9 @@ Sample: class {
         ov_clear(oggFile&)
     }
 
-    free: func {
-        alDeleteBuffers(bufferIDs size, bufferIDs toArray())
-    }
+    // free: func {
+    //     alDeleteBuffers(bufferIDs size, bufferIDs toArray())
+    // }
 
 }
 
@@ -331,6 +433,7 @@ Boombox: class {
     }
 
     freeSource: func (src: Source) {
+        Boombox logger info("Freeing source #{src sourceID}")
         src free()
         sources remove(src)
     }
