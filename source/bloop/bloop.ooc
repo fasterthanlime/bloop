@@ -15,10 +15,11 @@ Source: class {
     loop := false
     playing := false
     paused := false
-    currentTime: Double = 0
+
+    _doneTime: Double = 0
 
     BURST := static 64
-    LOW := static 4
+    LOW := static 16
 
     sourceID: ALuint // OpenAL sound source ID
 
@@ -46,6 +47,28 @@ Source: class {
         }
     }
 
+    duration: Double {
+        get {
+            if (sample) {
+                sample duration
+            } else {
+                0
+            }
+        }
+    }
+
+    currentTime: Double {
+        get {
+            pos: Float
+            alGetSourcef(sourceID, AL_SEC_OFFSET, pos&)
+            _doneTime + pos
+        }
+
+        set (time) {
+            seek(time)
+        }
+    }
+
     unqueue: func (bufferID: ALuint) {
         bytes: ALint = 0;
         chans: ALint = 0;
@@ -61,7 +84,7 @@ Source: class {
 
         durationInSeconds := (lengthInSamples as Double) / (freq as Double)
 
-        currentTime += durationInSeconds
+        _doneTime += durationInSeconds
         alSourceUnqueueBuffers(sourceID, 1, bufferID&)
         if (err := alGetError()) {
             raise("Error while unqueuing buffer #{bufferID}: #{alGetString(err)}")
@@ -186,12 +209,17 @@ Source: class {
     }
 
     seek: func (time: Double) {
+        if (!sample seek(time)) {
+            return
+        }
+
         log("Seeking to #{time}")
         alSourceStop(sourceID)
 
+        // purge
         queued: Int
         alGetSourcei(sourceID, AL_BUFFERS_QUEUED, queued&)
-        sample refill(queued, 0, |bufferID| unqueue(bufferID), |bufferID|)
+        refill(queued, 0)
 
         processed: Int
         alGetSourcei(sourceID, AL_BUFFERS_PROCESSED, processed&)
@@ -203,9 +231,7 @@ Source: class {
             raise("After seek, should have 0 queued buffers")
         }
 
-        sample seek(time)
-
-        currentTime = time
+        _doneTime = time
 
         refill(0)
         alGetSourcei(sourceID, AL_BUFFERS_QUEUED, queued&)
@@ -345,15 +371,12 @@ Sample: class {
 
     }
 
-    seek: func (time: Double) {
+    seek: func (time: Double) -> Bool {
         if(ov_time_seek(oggFile, time)) {
-            raise("Could not seek inside #{path}")
+            return false
         }
         hasNext = true
-        while (!bufferIDs empty?()) {
-            bufferID := bufferIDs removeAt(0)
-            alDeleteBuffers(1, bufferID&)
-        }
+        true
     }
 
     close: func {

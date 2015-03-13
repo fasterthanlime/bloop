@@ -35,7 +35,7 @@ main: func -> Int {
         counter += 1
         if (counter > 2) {
             counter = 0
-            logger info("#{source currentTime} / #{sample duration}")
+            logger info("%.2f / %.2f", source currentTime, source duration)
         }
     }
 
@@ -72,6 +72,11 @@ main: func -> Int {
     logger warn("seeking backwards")
     source seek(1.5)
     source play()
+    while (source currentTime < 3) {
+        doUpdate()
+    }
+
+    logger warn("invalid seek!")
     while (source currentTime < 5) {
         doUpdate()
     }
@@ -83,7 +88,7 @@ main: func -> Int {
         doUpdate()
     }
 
-    logger warn("Final time: #{source currentTime}")
+    logger warn("Final time: %.2f", source currentTime)
 
     box destroy()
 
