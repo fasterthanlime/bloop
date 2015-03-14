@@ -185,7 +185,9 @@ Source: class {
             paused = false
             log("[Source %d] resuming" format(sourceID))
         } else {
-            seek(0)
+            if (sample streaming) {
+                seek(0)
+            }
             log("[Source %d] playing" format(sourceID))
         }
 
@@ -208,9 +210,13 @@ Source: class {
         alDeleteSources(1, sourceID&)
     }
 
-    seek: func (time: Double) {
+    seek: func (time: Double) -> Bool {
+        if (!sample streaming) {
+            return false
+        }
+
         if (!sample seek(time)) {
-            return
+            return false
         }
 
         log("Seeking to #{time}")
@@ -242,6 +248,8 @@ Source: class {
                 alSourcePause(sourceID)
             }
         }
+
+        return true
     }
 
 }
