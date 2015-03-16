@@ -1,12 +1,12 @@
 before_install:
-  - sudo aptitude -y -q install curl make libgc-dev
-  - git clone --depth=1 git://github.com/nddrylliog/rock.git 
+  - sudo apt-get -y -q install curl make libgc-dev libopenal-dev
+  - git clone --depth=1 git://github.com/nddrylliog/rock.git
   - (cd rock && make -s quick-rescue)
   - export PATH=$PATH:$PWD/rock/bin
 
 script:
   - export OOC_LIBS=$PWD
   - cd samples
-# - mkdir -p travis
-# - rock -v example -o=travis/example && travis/example
+  - mkdir -p travis
+  - rock -v simple.ooc -o=travis/simple && travis/simple
 
