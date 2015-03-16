@@ -1,6 +1,6 @@
 
 use    openal, vorbis, deadlogger
-import openal, vorbis, os/Time, io/File, structs/[ArrayList, HashMap, List], deadlogger/Log
+import openal/openal, vorbis, os/Time, io/File, structs/[ArrayList, HashMap, List], deadlogger/Log
 
 SourceState: enum {
     STOPPED
