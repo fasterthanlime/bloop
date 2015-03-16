@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/fasterthanlime/bloop.svg)](https://travis-ci.org/fasterthanlime/bloop)
+
 ## bloop
 
 A simple sound library on top of OpenAL + libvorbis
