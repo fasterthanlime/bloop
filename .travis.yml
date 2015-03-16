@@ -1,6 +1,7 @@
 before_install:
   - sudo apt-get -y -q install curl make libgc-dev libopenal-dev
-  - git clone --depth=1 git://github.com/nddrylliog/rock.git
+  - git clone --depth=1 git://github.com/fasterthanlime/rock.git
+  - git clone --depth=1 git://github.com/fasterthanlime/deadlogger.git
   - (cd rock && make -s quick-rescue)
   - export PATH=$PATH:$PWD/rock/bin
 
