@@ -26,8 +26,8 @@ Source: class {
     init: func (=boombox, =sample, =autofree) {
         alGenSources(1, sourceID&)
         alSource3f(sourceID, AL_POSITION, 0.0, 0.0, 0.0)
-        alSourcei(sourceID, AL_REFERENCE_DISTANCE, 1.0)
-        alSourcei(sourceID, AL_MAX_DISTANCE, 1000.0)
+        alSourcef(sourceID, AL_REFERENCE_DISTANCE, 1.0)
+        alSourcef(sourceID, AL_MAX_DISTANCE, 1000.0)
 
         if (!sample streaming) {
             log("Queuing #{sample bufferIDs size} buffers")
